@@ -56,6 +56,7 @@ import {
   type Dataset,
   type Group,
   type ItemType,
+  type ListChild,
   type ParamValues,
   type RenderedReport,
   type ReportDefinition,
@@ -71,6 +72,7 @@ type DatasetInfo = Record<string, { columns: { name: string; type: string }[]; r
 const FORMATS = ['', 'N0', 'N2', 'C0', 'C2', 'P0', 'P1', 'F2', 'D', 'DT', 'T', 'dd-MMM-yyyy', 'MMM yyyy', 'yyyy-MM-dd HH:mm'];
 const ITEM_META: Record<ItemType, { label: string; icon: ReactNode }> = {
   text: { label: 'Text box', icon: <TitleIcon fontSize="small" /> },
+  list: { label: 'List (repeat per row)', icon: <AccountTreeIcon fontSize="small" /> },
   table: { label: 'Table (groups & subtotals)', icon: <TableChartIcon fontSize="small" /> },
   matrix: { label: 'Matrix (cross-tab)', icon: <GridOnIcon fontSize="small" /> },
   chart: { label: 'Chart', icon: <BarChartIcon fontSize="small" /> },
@@ -86,6 +88,7 @@ function newItem(type: ItemType, def: ReportDefinition): ReportItem {
   const ds = def.datasets[0]?.name ?? '';
   switch (type) {
     case 'text': return { id, type, text: 'Text — use {{Parameters.name}} or {{Sum(dataset.field, C2)}}', style: {} };
+    case 'list': return { id, type, dataset: ds, maxRows: 100, items: [{ id: newId(), type: 'text', text: '{{Fields.}}', style: {} }] };
     case 'table': return { id, type, dataset: ds, columns: [], groups: [], details: true, totals: true, repeatHeader: true, sort: [], zebra: true };
     case 'matrix': return { id, type, dataset: ds, rows: [], column: '', value: '', aggregate: 'sum', rowTotals: true, columnTotals: true, columnSort: 'asc', maxColumns: 50 };
     case 'chart': return { id, type, dataset: ds, chartType: 'column', category: '', series: [], height: 300, legend: true, labels: false };
@@ -377,6 +380,7 @@ function ItemEditor({ it, def, fieldsOf, reports, onChange }: { it: ReportItem; 
     </TextField>
   );
   const titleField = it.type !== 'text' && it.type !== 'pageBreak' && it.type !== 'divider' && <TextField size="small" label="Title (optional, expressions allowed)" value={it.title ?? ''} onChange={(e) => onChange({ ...it, title: e.target.value || undefined })} fullWidth />;
+  const bookmarkField = <TextField size="small" label="Bookmark (document map label; optional)" value={it.bookmark ?? ''} onChange={(e) => onChange({ ...it, bookmark: e.target.value || undefined })} fullWidth />;
 
   switch (it.type) {
     case 'text':
@@ -401,6 +405,63 @@ function ItemEditor({ it, def, fieldsOf, reports, onChange }: { it: ReportItem; 
           </Row>
         </Stack>
       );
+    case 'list': {
+      const fields = fieldsOf(it.dataset);
+      const setItems = (items: ListChild[]) => onChange({ ...it, items });
+      const patchChild = (i: number, patch: Record<string, unknown>) => setItems(it.items.map((c, j) => (j === i ? ({ ...c, ...patch } as ListChild) : c)));
+      return (
+        <Stack spacing={1.25}>
+          {titleField}
+          {bookmarkField}
+          <Row>
+            {datasetSelect(it.dataset, (v) => onChange({ ...it, dataset: v }))}
+            <TextField size="small" type="number" label="Max rows" value={it.maxRows} onChange={(e) => onChange({ ...it, maxRows: Number(e.target.value) || 100 })} sx={{ width: 110 }} />
+          </Row>
+          <Typography variant="caption" color="text.secondary">
+            The elements below repeat once per row. Use {'{{Fields.column}}'} in text to show that row&apos;s values.
+          </Typography>
+          {fields.length > 0 && (
+            <Row>
+              {fields.map((f) => (
+                <Chip key={f} size="small" label={`{{Fields.${f}}}`} />
+              ))}
+            </Row>
+          )}
+          {it.items.map((c, i) => (
+            <Box key={c.id} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1 }}>
+              <Row>
+                <TextField
+                  select
+                  size="small"
+                  label="Element"
+                  value={c.type}
+                  onChange={(e) => {
+                    const t = e.target.value as ListChild['type'];
+                    const next = (t === 'text' ? { id: c.id, type: 'text', text: '{{Fields.}}', style: {} } : t === 'image' ? { id: c.id, type: 'image', src: '', width: 160, align: 'left' } : { id: c.id, type: 'divider' }) as ListChild;
+                    setItems(it.items.map((x, j) => (j === i ? next : x)));
+                  }}
+                  sx={{ width: 120 }}
+                >
+                  <MenuItem value="text">Text</MenuItem>
+                  <MenuItem value="image">Image</MenuItem>
+                  <MenuItem value="divider">Line</MenuItem>
+                </TextField>
+                <IconButton size="small" aria-label="Remove element" onClick={() => setItems(it.items.filter((_x, j) => j !== i))}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Row>
+              {c.type === 'text' && <TextField size="small" fullWidth multiline minRows={1} label="Text" value={c.text} onChange={(e) => patchChild(i, { text: e.target.value })} sx={{ mt: 1 }} />}
+              {c.type === 'image' && <TextField size="small" fullWidth label="Image data URI" value={c.src} onChange={(e) => patchChild(i, { src: e.target.value })} sx={{ mt: 1 }} />}
+            </Box>
+          ))}
+          <Box>
+            <Button size="small" startIcon={<AddIcon />} onClick={() => setItems([...it.items, { id: newId(), type: 'text', text: '{{Fields.}}', style: {} }])}>
+              Add element
+            </Button>
+          </Box>
+        </Stack>
+      );
+    }
     case 'table': {
       const fields = fieldsOf(it.dataset);
       const setCols = (columns: Column[]) => onChange({ ...it, columns });
@@ -408,6 +469,7 @@ function ItemEditor({ it, def, fieldsOf, reports, onChange }: { it: ReportItem; 
       return (
         <Stack spacing={1.25}>
           {titleField}
+          {bookmarkField}
           <Row>
             {datasetSelect(it.dataset, (v) => onChange({ ...it, dataset: v }))}
             <Button size="small" disabled={!fields.length} onClick={() => setCols(fields.map((f) => ({ field: f, rules: [] })))}>
@@ -480,6 +542,7 @@ function ItemEditor({ it, def, fieldsOf, reports, onChange }: { it: ReportItem; 
       return (
         <Stack spacing={1.25}>
           {titleField}
+          {bookmarkField}
           <Row>
             {datasetSelect(it.dataset, (v) => onChange({ ...it, dataset: v }))}
             <Autocomplete multiple freeSolo size="small" options={fields} value={it.rows} onChange={(_e, v) => onChange({ ...it, rows: v })} sx={{ minWidth: 220, flex: 1 }} renderInput={(p) => <TextField {...p} label="Row groups" />} />
@@ -514,6 +577,7 @@ function ItemEditor({ it, def, fieldsOf, reports, onChange }: { it: ReportItem; 
       return (
         <Stack spacing={1.25}>
           {titleField}
+          {bookmarkField}
           <Row>
             {datasetSelect(it.dataset, (v) => onChange({ ...it, dataset: v }))}
             <TextField select size="small" label="Chart type" value={it.chartType} onChange={(e) => onChange({ ...it, chartType: e.target.value as 'bar' })} sx={{ width: 140 }}>
@@ -542,6 +606,7 @@ function ItemEditor({ it, def, fieldsOf, reports, onChange }: { it: ReportItem; 
       return (
         <Stack spacing={1}>
           {titleField}
+          {bookmarkField}
           {it.cards.map((c, i) => (
             <Row key={i}>
               <TextField size="small" label="Label" value={c.label} onChange={(e) => onChange({ ...it, cards: it.cards.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} sx={{ width: 130 }} />
@@ -593,6 +658,7 @@ function ItemEditor({ it, def, fieldsOf, reports, onChange }: { it: ReportItem; 
       return (
         <Stack spacing={1.25}>
           {titleField}
+          {bookmarkField}
           <TextField select size="small" label="Report" value={it.reportId} onChange={(e) => onChange({ ...it, reportId: e.target.value })}>
             {reports.map((r) => (
               <MenuItem key={r.id} value={r.id}>

@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Box, Typography } from '@mui/material';
+import { Box, Link, Stack, Typography } from '@mui/material';
 import type { DrillLink, RCell, RItem, RTableRow, RenderedReport } from '@/api/reports';
 
 /** Page-like rendering of a report (always "paper" white, like SSRS / print preview). */
@@ -306,8 +306,29 @@ export function ReportView({ model, onDrill, zoom = 1 }: { model: RenderedReport
           </Typography>
         )}
         {(model.showTitle || model.showParameters) && <Box sx={{ borderTop: `2px solid ${C.head}`, my: 1.5 }} />}
+        {(model.documentMap?.length ?? 0) > 0 && (
+          <Box sx={{ mb: 1.5, p: 1, border: `1px solid ${C.line}`, borderRadius: 1, '@media print': { display: 'none' } }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.4, mb: 0.5 }}>Contents</Typography>
+            <Stack component="nav" spacing={0.25}>
+              {model.documentMap.map((d) => (
+                <Link
+                  key={d.id}
+                  component="button"
+                  type="button"
+                  underline="hover"
+                  sx={{ textAlign: 'left', fontSize: 13, color: C.head, pl: d.level * 1.5, width: 'fit-content' }}
+                  onClick={() => document.getElementById(`rpt-item-${d.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                >
+                  {d.label}
+                </Link>
+              ))}
+            </Stack>
+          </Box>
+        )}
         {model.items.map((it) => (
-          <Item key={it.id} it={it} onDrill={onDrill} />
+          <Box key={it.id} id={`rpt-item-${it.id}`} sx={{ scrollMarginTop: 72 }}>
+            <Item it={it} onDrill={onDrill} />
+          </Box>
         ))}
         <HeaderFooter o={model.footer} />
       </Box>

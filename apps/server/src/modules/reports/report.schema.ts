@@ -106,10 +106,19 @@ export const groupSchema = z.object({
   collapsed: z.boolean().default(false),
 });
 
-const base = { id, title: z.string().max(300).optional() };
+const base = { id, title: z.string().max(300).optional(), bookmark: z.string().max(120).optional() };
+
+/** Items that may repeat inside a list region (one block per dataset row; {{Fields.col}} resolves per row). */
+const listChildSchema = z.discriminatedUnion('type', [
+  z.object({ ...base, type: z.literal('text'), text: z.string().max(20_000), style: textStyle }),
+  z.object({ ...base, type: z.literal('image'), src: z.string().max(800_000).regex(/^data:image\/(png|jpe?g|svg\+xml);base64,/, 'Images must be uploaded (data URI)'), width: z.number().int().min(16).max(1000).default(160), align }),
+  z.object({ ...base, type: z.literal('divider') }),
+]);
+export type ListChild = z.infer<typeof listChildSchema>;
 
 export const itemSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('text'), text: z.string().max(20_000), style: textStyle }),
+    z.object({ ...base, type: z.literal('list'), dataset: name, items: z.array(listChildSchema).min(1).max(20), maxRows: z.number().int().min(1).max(1000).default(100) }),
     z.object({
       ...base,
       type: z.literal('table'),

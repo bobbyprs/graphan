@@ -163,6 +163,8 @@ export interface ExpressionScope {
   /** Parameter values formatted for display (labels for selections) */
   parameterLabels: Record<string, string>;
   datasets: Record<string, QueryResult>;
+  /** Current row inside a list region; enables {{Fields.column}} references */
+  fields?: Record<string, unknown>;
   /** Left as tokens so page-level renderers can substitute them */
   keepPageTokens?: boolean;
 }
@@ -196,6 +198,12 @@ function evalExpr(expr: string, s: ExpressionScope): string | null {
   }
   const u = /^User\.(\w+)$/i.exec(expr);
   if (u) return s.user;
+  const f = /^Fields\.(\w+)(?:\s*,\s*([^,]+))?$/i.exec(expr);
+  if (f) {
+    if (!s.fields || !(f[1] in s.fields)) return '#Error';
+    const v = s.fields[f[1]];
+    return f[2] ? formatValue(v, f[2].trim(), s.fmt) : v == null ? '' : String(v);
+  }
   const p = /^Parameters\.(\w+)(?:\s*,\s*([^,]+))?$/i.exec(expr);
   if (p) {
     if (!(p[1] in s.parameters)) return '#Error';

@@ -76,6 +76,8 @@ export interface RenderedReport {
   executedAt: string;
   user: string;
   parameters: { name: string; label: string; display: string; hidden: boolean }[];
+  /** Navigable bookmarks: each entry points at the id of a rendered item. */
+  documentMap: { id: string; label: string; level: number }[];
   items: RItem[];
   datasets: { name: string; rowCount: number; truncated: boolean; durationMs: number }[];
   /** Total data rows across data regions (used for "only send if data") */

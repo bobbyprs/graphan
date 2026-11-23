@@ -71,11 +71,20 @@ export interface TextStyle {
   align?: Align;
 }
 
+type ItemBase = { id: string; title?: string; bookmark?: string };
+
+export type ListChild =
+  | (ItemBase & { type: 'text'; text: string; style: TextStyle })
+  | (ItemBase & { type: 'image'; src: string; width: number; align?: Align })
+  | (ItemBase & { type: 'divider' });
+
 export type ReportItem =
-  | { id: string; title?: string; type: 'text'; text: string; style: TextStyle }
+  | (ItemBase & { type: 'text'; text: string; style: TextStyle })
+  | (ItemBase & { type: 'list'; dataset: string; items: ListChild[]; maxRows: number })
   | {
       id: string;
       title?: string;
+      bookmark?: string;
       type: 'table';
       dataset: string;
       columns: Column[];
@@ -91,6 +100,7 @@ export type ReportItem =
   | {
       id: string;
       title?: string;
+      bookmark?: string;
       type: 'matrix';
       dataset: string;
       rows: string[];
@@ -106,6 +116,7 @@ export type ReportItem =
   | {
       id: string;
       title?: string;
+      bookmark?: string;
       type: 'chart';
       dataset: string;
       chartType: 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut' | 'stacked';
@@ -117,11 +128,11 @@ export type ReportItem =
       legend: boolean;
       labels: boolean;
     }
-  | { id: string; title?: string; type: 'kpi'; cards: { label: string; value: string; color?: string; note?: string }[] }
-  | { id: string; title?: string; type: 'image'; src: string; width: number; align?: Align }
-  | { id: string; title?: string; type: 'pageBreak' }
-  | { id: string; title?: string; type: 'divider' }
-  | { id: string; title?: string; type: 'subreport'; reportId: string; params: Record<string, string> };
+  | { id: string; title?: string; bookmark?: string; type: 'kpi'; cards: { label: string; value: string; color?: string; note?: string }[] }
+  | { id: string; title?: string; bookmark?: string; type: 'image'; src: string; width: number; align?: Align }
+  | { id: string; title?: string; bookmark?: string; type: 'pageBreak' }
+  | { id: string; title?: string; bookmark?: string; type: 'divider' }
+  | { id: string; title?: string; bookmark?: string; type: 'subreport'; reportId: string; params: Record<string, string> };
 
 export type ItemType = ReportItem['type'];
 
@@ -206,6 +217,7 @@ export interface RenderedReport {
   executedAt: string;
   user: string;
   parameters: { name: string; label: string; display: string; hidden: boolean }[];
+  documentMap: { id: string; label: string; level: number }[];
   items: RItem[];
   datasets: { name: string; rowCount: number; truncated: boolean; durationMs: number }[];
   rowCount: number;

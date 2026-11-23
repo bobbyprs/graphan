@@ -47,6 +47,37 @@ test('expressions: globals, parameters, dataset aggregates, unknown → #Error',
   assert.equal(evaluateText('{{Sum(s.v, C2)}} / {{Count(s)}}', scope), '$42.50 / 2');
   assert.equal(evaluateText('{{Nope(s.v)}}', scope), '#Error');
   assert.equal(evaluateText('Page {{Globals.PageNumber}}', { ...scope, keepPageTokens: true }), 'Page {{Globals.PageNumber}}');
+
+  // Fields.x resolves against the current list row; formats apply; missing → #Error
+  const rowScope: ExpressionScope = { ...scope, fields: { name: 'Acme', amt: 1234 } };
+  assert.equal(evaluateText('{{Fields.name}}: {{Fields.amt, C0}}', rowScope), 'Acme: $1,234');
+  assert.equal(evaluateText('{{Fields.missing}}', rowScope), '#Error');
+  assert.equal(evaluateText('{{Fields.name}}', scope), '#Error'); // no row context outside a list
+});
+
+test('report schema: list region repeats child items over a dataset', () => {
+  const def = reportDefinitionSchema.parse({
+    datasets: [{ name: 'people', dataSourceId: '00000000-0000-0000-0000-000000000000', query: 'select 1' }],
+    body: [
+      {
+        id: 'cards',
+        type: 'list',
+        dataset: 'people',
+        bookmark: 'People',
+        items: [
+          { id: 'n', type: 'text', text: '{{Fields.name}}' },
+          { id: 'sep', type: 'divider' },
+        ],
+      },
+    ],
+  });
+  const list = def.body[0];
+  assert.equal(list.type, 'list');
+  if (list.type === 'list') {
+    assert.equal(list.maxRows, 100); // default applied
+    assert.equal(list.items.length, 2);
+    assert.equal(list.bookmark, 'People');
+  }
 });
 
 test('date keywords resolve to calendar dates', () => {
@@ -76,6 +107,7 @@ const model: RenderedReport = {
   executedAt: new Date().toISOString(),
   user: 'tester',
   parameters: [{ name: 'p', label: 'P', display: 'x', hidden: false }],
+  documentMap: [{ id: 't', label: 'Hello', level: 0 }],
   items: [
     { type: 'text', id: 't', text: 'Hello', style: { bold: true } },
     { type: 'kpi', id: 'k', cards: [{ label: 'Revenue', value: '$1' }] },

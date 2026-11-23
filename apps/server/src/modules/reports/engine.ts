@@ -206,9 +206,12 @@ export async function renderReport(defRaw: unknown, input: ParamInput, ctx: Rend
   };
 
   const items: RItem[] = [];
+  const documentMap: { id: string; label: string; level: number }[] = [];
   for (const it of def.body) {
     try {
-      items.push(...(await renderItem(it, def, data, scope, ctx)));
+      const rendered = await renderItem(it, def, data, scope, ctx);
+      if (it.bookmark && rendered.length) documentMap.push({ id: rendered[0].id, label: evaluateText(it.bookmark, scope), level: 0 });
+      items.push(...rendered);
     } catch (e) {
       if (e instanceof AppError && e.code === 'SUBREPORT_DEPTH') throw e;
       items.push({ type: 'error', id: it.id, title: it.title, message: (e as Error).message });
@@ -231,6 +234,7 @@ export async function renderReport(defRaw: unknown, input: ParamInput, ctx: Rend
     user: ctx.userName,
     parameters: def.parameters.map((p) => ({ name: p.name, label: p.label ?? p.name, display: labels[p.name] ?? '', hidden: p.hidden })),
     items,
+    documentMap,
     datasets: def.datasets.map((d) => ({ name: d.name, rowCount: data[d.name]?.rowCount ?? 0, truncated: !!data[d.name]?.truncated, durationMs: data[d.name]?.durationMs ?? 0 })),
     rowCount: items.reduce((n, i) => n + (i.type === 'table' ? i.dataRows : i.type === 'matrix' ? i.rows.length : 0), 0),
     durationMs: Date.now() - started,
@@ -249,6 +253,23 @@ async function renderItem(it: ReportItem, def: ReportDefinition, data: Record<st
   switch (it.type) {
     case 'text':
       return [{ type: 'text', id: it.id, text: evaluateText(it.text, scope), style: it.style }];
+    case 'list': {
+      const r = ds(it.dataset);
+      const rows = it.maxRows ? r.rows.slice(0, it.maxRows) : r.rows;
+      const out: RItem[] = [];
+      rows.forEach((row, ri) => {
+        const rowScope: ExpressionScope = { ...scope, fields: row };
+        for (const child of it.items) {
+          const cid = `${it.id}.${ri}.${child.id}`;
+          if (child.type === 'text') out.push({ type: 'text', id: cid, text: evaluateText(child.text, rowScope), style: child.style });
+          else if (child.type === 'image') out.push({ type: 'image', id: cid, src: child.src, width: child.width, align: child.align ?? 'left' });
+          else out.push({ type: 'divider', id: cid });
+        }
+      });
+      // Always emit at least one node so a bookmark on an empty list still has an anchor.
+      if (!out.length) out.push({ type: 'text', id: it.id, text: it.title ? '' : '', style: {} });
+      return out;
+    }
     case 'table':
       return [renderTable(it, ds(it.dataset), scope.fmt, title, scope.parameters)];
     case 'matrix':
