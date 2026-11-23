@@ -1,0 +1,39 @@
+# Run on every release BEFORE rolling out the API (e.g. Helm pre-upgrade hook / Argo CD PreSync).
+#   kubectl -n graphan delete job graphan-migrate --ignore-not-found && kubectl apply -f 03-migrate-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: graphan-migrate
+  namespace: graphan
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: ghcr.io/your-org/graphan-api:1.0.0
+          command: ["sh", "-c", "npx prisma migrate deploy && node dist-seed/prisma/seed.js"]
+          envFrom:
+            - configMapRef: { name: graphan-config }
+            - secretRef: { name: graphan-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: npm, mountPath: /home/node/.npm }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: npm, emptyDir: {} }

@@ -1,0 +1,102 @@
+# Local / single-host deployment.
+#   cp .env.example .env   # set secrets!
+#   docker compose up -d --build
+#   open http://localhost:8080
+name: graphan
+
+x-api-env: &api-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://graphan:${POSTGRES_PASSWORD:-graphan}@db:5432/graphan?schema=public
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET in .env}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}
+  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?set CREDENTIALS_ENCRYPTION_KEY in .env}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+  APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:8080}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-Graphan Alerts <alerts@example.com>}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  EMBED_SECRET: ${EMBED_SECRET:-}
+  EMBED_SESSION_TTL: ${EMBED_SESSION_TTL:-8h}
+  SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@graphan.local}
+  SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@12345}
+  SAMPLE_DB_HOST: sample-db
+  SAMPLE_DB_PORT: 5432
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: graphan
+      POSTGRES_USER: graphan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-graphan}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U graphan -d graphan"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Demo data for the sample dashboards (sales + server metrics)
+  sample-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sample
+      POSTGRES_USER: sample_owner
+      POSTGRES_PASSWORD: sample_owner
+    volumes:
+      - ./deploy/sample-data/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - sample-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sample_owner -d sample"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # One-shot: apply migrations, then seed (idempotent)
+  migrate:
+    build: { context: ., dockerfile: apps/server/Dockerfile }
+    image: graphan/api:local
+    environment: *api-env
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist-seed/prisma/seed.js"]
+    depends_on:
+      db: { condition: service_healthy }
+      sample-db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    image: graphan/api:local
+    restart: unless-stopped
+    environment: *api-env
+    volumes:
+      - sqlite-files:/data/sqlite
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    expose:
+      - "4000"
+
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    image: graphan/web:local
+    restart: unless-stopped
+    environment:
+      # Origins allowed to iframe /embed/* dashboards, space-separated
+      EMBED_FRAME_ANCESTORS: ${EMBED_FRAME_ANCESTORS:-}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+
+volumes:
+  db-data:
+  sample-data:
+  sqlite-files:

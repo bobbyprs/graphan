@@ -1,0 +1,1 @@
+ALTER TABLE "Dashboard" ADD COLUMN "embedEnabled" BOOLEAN NOT NULL DEFAULT false;

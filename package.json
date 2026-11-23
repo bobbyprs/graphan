@@ -1,0 +1,25 @@
+{
+  "name": "graphan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Graphan - multi-database dashboards & analytics platform",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:server": "npm run dev -w apps/server",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/server && npm run build -w apps/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "npm run prisma:migrate -w apps/server",
+    "db:seed": "npm run prisma:seed -w apps/server",
+    "deploy": "bash ./deploy.sh",
+    "deploy:web": "bash ./deploy.sh web",
+    "deploy:api": "bash ./deploy.sh api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

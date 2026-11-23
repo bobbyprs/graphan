@@ -1,0 +1,77 @@
+# TLS via cert-manager; adjust host/issuer/class for your cluster.
+# /api and /ws go straight to the API (WebSocket upgrade supported by ingress-nginx);
+# everything else to the static web tier.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: graphan
+  namespace: graphan
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: 4m
+    # Socket.IO: keep a client on the same pod across the polling→websocket upgrade
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/session-cookie-name: graphan-route
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [graphan.example.com]
+      secretName: graphan-tls
+  rules:
+    - host: graphan.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: { service: { name: api, port: { number: 4000 } } }
+          - path: /ws
+            pathType: Prefix
+            backend: { service: { name: api, port: { number: 4000 } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: graphan-web, port: { number: 80 } } }
+---
+# Default-deny ingress, then allow only what's needed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: graphan
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-and-api-from-ingress
+  namespace: graphan
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [graphan-web, graphan-api] }
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+    - from:
+        - podSelector: { matchLabels: { app: graphan-web } }
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-api
+  namespace: graphan
+spec:
+  podSelector:
+    matchLabels: { app: graphan-postgres }
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: graphan-api } }
+        - podSelector: { matchLabels: { job-name: graphan-migrate } }
+      ports:
+        - { port: 5432 }
+  policyTypes: [Ingress]

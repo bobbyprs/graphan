@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graphan-web
+  namespace: graphan
+  labels: { app: graphan-web }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: graphan-web }
+  template:
+    metadata:
+      labels: { app: graphan-web }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: ghcr.io/your-org/graphan-web:1.0.0
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            # Origins allowed to iframe /embed/* dashboards, space-separated (e.g. "https://app.example.com")
+            - { name: EMBED_FRAME_ANCESTORS, value: "" }
+          readinessProbe:
+            httpGet: { path: /nginx-health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /nginx-health, port: http }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: tmp, mountPath: /tmp }
+            # nginx renders its config from the template here at startup (root FS is read-only)
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: cache, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+        - { name: conf, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: graphan-web
+  namespace: graphan
+spec:
+  selector: { app: graphan-web }
+  ports:
+    - { name: http, port: 80, targetPort: http }

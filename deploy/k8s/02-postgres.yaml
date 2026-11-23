@@ -1,0 +1,74 @@
+# Metadata database. For production prefer a managed service (RDS, Cloud SQL, Azure
+# Database for PostgreSQL) or an operator (CloudNativePG); then delete this file and
+# point DATABASE_URL at it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: graphan-postgres
+  namespace: graphan
+spec:
+  clusterIP: None
+  selector: { app: graphan-postgres }
+  ports:
+    - port: 5432
+      name: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: graphan-postgres
+  namespace: graphan
+spec:
+  serviceName: graphan-postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: graphan-postgres }
+  template:
+    metadata:
+      labels: { app: graphan-postgres }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        fsGroup: 70
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_DB, value: graphan }
+            - { name: POSTGRES_USER, value: graphan }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: graphan-secrets, key: POSTGRES_PASSWORD } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "graphan", "-d", "graphan"] }
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "graphan", "-d", "graphan"] }
+            periodSeconds: 20
+            initialDelaySeconds: 30
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+      volumes:
+        - name: run
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 20Gi

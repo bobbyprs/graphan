@@ -1,0 +1,553 @@
+// Graphan application metadata schema (PostgreSQL)
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Identity ─────────────────────────────
+
+enum Role {
+  ADMIN
+  DEVELOPER
+  ANALYST
+  VIEWER
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  isActive      Boolean   @default(true)
+  isSuperAdmin  Boolean   @default(false)
+  lastLoginAt   DateTime?
+  failedLogins  Int       @default(0)
+  lockedUntil   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberships   WorkspaceMember[]
+  teams         TeamMember[]
+  refreshTokens RefreshToken[]
+  dashboards    Dashboard[]          @relation("DashboardOwner")
+  reports       Report[]             @relation("ReportOwner")
+  dashboardAcl  DashboardPermission[]
+  savedQueries  SavedQuery[]
+  mlModels      MlModel[]
+  queryHistory  QueryHistory[]
+  auditLogs     AuditLog[]
+  alertAcks     AlertEvent[]         @relation("AlertAckBy")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  family     String // rotation family; reuse of a revoked token revokes the whole family
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+}
+
+model Workspace {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members       WorkspaceMember[]
+  teams         Team[]
+  dataSources   DataSource[]
+  dashboards    Dashboard[]
+  reports       Report[]
+  savedQueries  SavedQuery[]
+  mlModels      MlModel[]
+  dataModels    DataModel[]
+  alertRules    AlertRule[]
+  channels      NotificationChannel[]
+  auditLogs     AuditLog[]
+  folders       Folder[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        Role      @default(VIEWER)
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model Team {
+  id          String       @id @default(uuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime     @default(now())
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members     TeamMember[]
+  dashboardAcl DashboardPermission[]
+
+  @@unique([workspaceId, name])
+}
+
+model TeamMember {
+  teamId String
+  userId String
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+}
+
+// ───────────────────────────── Data sources ─────────────────────────────
+
+enum DataSourceType {
+  POSTGRES
+  MYSQL
+  MSSQL
+  ORACLE
+  MONGODB
+  SQLITE
+}
+
+enum ConnectionStatus {
+  UNKNOWN
+  ONLINE
+  DEGRADED
+  OFFLINE
+}
+
+model DataSource {
+  id                String           @id @default(uuid())
+  workspaceId       String
+  name              String
+  type              DataSourceType
+  host              String?
+  port              Int?
+  database          String?
+  username          String?
+  /// AES-256-GCM encrypted JSON blob: { password, connectionString, ... }
+  encryptedSecrets  String?
+  /// Non-secret driver options (ssl, poolMax, schema, filePath, ...)
+  options           Json             @default("{}")
+  readOnly          Boolean          @default(true)
+  status            ConnectionStatus @default(UNKNOWN)
+  lastCheckedAt     DateTime?
+  lastLatencyMs     Int?
+  lastError         String?
+  createdById       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  workspace         Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  savedQueries      SavedQuery[]
+  mlModels          MlModel[]
+  dataModel         DataModel?
+  history           QueryHistory[]
+  alertRules        AlertRule[]
+
+  @@unique([workspaceId, name])
+}
+
+// ───────────────────────────── Queries ─────────────────────────────
+
+/// Smart builder data model: the user's corrections to what the analyzer detected, plus the last detected joins
+model DataModel {
+  id           String     @id @default(uuid())
+  workspaceId  String
+  dataSourceId String     @unique
+  /// { joins: { add, remove }, tables: { key: {...} }, columns: { key: {...} }, kpis: { id: {...} } }
+  overrides    Json       @default("{}")
+  /// Joins found by the most recent analysis (used for SQL editor join completion)
+  joins        Json       @default("[]")
+  updatedById  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+/// Trained machine-learning model (ML Studio model registry)
+model MlModel {
+  id           String      @id @default(uuid())
+  workspaceId  String
+  ownerId      String
+  dataSourceId String?
+  name         String
+  target       String
+  algorithm    String
+  sql          String
+  /// Leaderboard metrics of the selected model (r2, rmse, mae, mape)
+  metrics      Json
+  /// Full training report (leaderboard, importance, diagnostics) without the model itself
+  report       Json
+  /// Serialised encoder + model + conformal intervals used for predictions
+  bundle       Json
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner        User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  dataSource   DataSource? @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+model SavedQuery {
+  id           String     @id @default(uuid())
+  workspaceId  String
+  dataSourceId String
+  ownerId      String
+  name         String
+  description  String?
+  sql          String
+  isFavorite   Boolean    @default(false)
+  tags         String[]   @default([])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  owner        User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, ownerId])
+}
+
+model QueryHistory {
+  id           String     @id @default(uuid())
+  dataSourceId String
+  userId       String
+  sql          String
+  durationMs   Int
+  rowCount     Int?
+  success      Boolean
+  error        String?
+  createdAt    DateTime   @default(now())
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// ───────────────────────────── Dashboards ─────────────────────────────
+
+model Folder {
+  id          String      @id @default(uuid())
+  workspaceId String
+  name        String
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dashboards  Dashboard[]
+
+  @@unique([workspaceId, name])
+}
+
+enum PermissionLevel {
+  VIEW
+  EDIT
+  ADMIN
+}
+
+model Dashboard {
+  id              String    @id @default(uuid())
+  workspaceId     String
+  folderId        String?
+  ownerId         String
+  title           String
+  description     String?
+  tags            String[]  @default([])
+  /// Full dashboard model: panels, layout, variables, time settings. Validated by zod.
+  definition      Json
+  version         Int       @default(1)
+  isTemplate      Boolean   @default(false)
+  /// Private dashboards are visible only to owner, explicit grants and workspace admins/developers
+  isPrivate       Boolean   @default(false)
+  /// e.g. "30s", "5m". Null = no auto refresh.
+  refreshInterval String?
+  /// Cron for server-side scheduled refresh (pre-warms the panel cache)
+  scheduleCron    String?
+  shareToken      String?   @unique
+  /// Allow signed (JWT) embedding into other applications
+  embedEnabled    Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder          Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  owner           User      @relation("DashboardOwner", fields: [ownerId], references: [id])
+  permissions     DashboardPermission[]
+  versions        DashboardVersion[]
+
+  @@index([workspaceId])
+}
+
+model DashboardVersion {
+  id          String    @id @default(uuid())
+  dashboardId String
+  version     Int
+  definition  Json
+  createdById String
+  message     String?
+  createdAt   DateTime  @default(now())
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, version])
+}
+
+model DashboardPermission {
+  id          String          @id @default(uuid())
+  dashboardId String
+  userId      String?
+  teamId      String?
+  level       PermissionLevel
+  dashboard   Dashboard       @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  user        User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team        Team?           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, userId])
+  @@unique([dashboardId, teamId])
+}
+
+// ───────────────────────────── Alerting ─────────────────────────────
+
+enum AlertState {
+  OK
+  PENDING
+  FIRING
+  NO_DATA
+  ERROR
+}
+
+enum ChannelType {
+  EMAIL
+  TEAMS
+}
+
+model NotificationChannel {
+  id          String      @id @default(uuid())
+  workspaceId String
+  name        String
+  type        ChannelType
+  /// EMAIL: { recipients: string[] }, TEAMS: { webhookUrl } (webhook encrypted)
+  config      Json
+  createdAt   DateTime    @default(now())
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rules       AlertRuleChannel[]
+
+  @@unique([workspaceId, name])
+}
+
+model AlertRule {
+  id              String     @id @default(uuid())
+  workspaceId     String
+  dataSourceId    String
+  name            String
+  description     String?
+  query           String
+  /// { field, reducer: last|avg|min|max|sum|count, operator: gt|gte|lt|lte|eq|neq, threshold }
+  condition       Json
+  intervalSeconds Int        @default(60)
+  /// Condition must hold this long before FIRING
+  forSeconds      Int        @default(0)
+  severity        String     @default("warning")
+  enabled         Boolean    @default(true)
+  state           AlertState @default(OK)
+  pendingSince    DateTime?
+  lastEvaluatedAt DateTime?
+  lastValue       Float?
+  createdById     String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dataSource      DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  channels        AlertRuleChannel[]
+  events          AlertEvent[]
+
+  @@index([enabled, lastEvaluatedAt])
+}
+
+model AlertRuleChannel {
+  ruleId    String
+  channelId String
+  rule      AlertRule           @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  channel   NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, channelId])
+}
+
+model AlertEvent {
+  id             String     @id @default(uuid())
+  ruleId         String
+  fromState      AlertState
+  toState        AlertState
+  value          Float?
+  message        String
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  createdAt      DateTime   @default(now())
+  rule           AlertRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  ackUser        User?      @relation("AlertAckBy", fields: [acknowledgedBy], references: [id])
+
+  @@index([ruleId, createdAt(sort: Desc)])
+}
+
+// ───────────────────────────── Audit ─────────────────────────────
+
+model AuditLog {
+  id          String     @id @default(uuid())
+  workspaceId String?
+  userId      String?
+  action      String // e.g. "datasource.create"
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime   @default(now())
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+}
+
+// ───────────────────────────── Paginated reports (SSRS-style) ─────────────────────────────
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  WORD
+  CSV
+  HTML
+  JSON
+}
+
+model Report {
+  id                String    @id @default(uuid())
+  workspaceId       String
+  ownerId           String
+  /// Catalog folder path, e.g. "/Finance/Monthly"
+  folder            String    @default("/")
+  title             String
+  description       String?
+  /// Report definition: page setup, parameters, datasets, header/footer, body items. Validated by zod.
+  definition        Json
+  version           Int       @default(1)
+  /// Cache rendered output per parameter set for N minutes (0 = always run live)
+  cacheMinutes      Int       @default(0)
+  /// Max snapshots kept in report history
+  snapshotRetention Int       @default(30)
+  embedEnabled      Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner             User      @relation("ReportOwner", fields: [ownerId], references: [id])
+  subscriptions     ReportSubscription[]
+  snapshots         ReportSnapshot[]
+
+  @@index([workspaceId, folder])
+}
+
+model ReportSubscription {
+  id          String       @id @default(uuid())
+  reportId    String
+  ownerId     String
+  name        String
+  enabled     Boolean      @default(true)
+  /// node-cron expression evaluated in `timezone`
+  cron        String
+  timezone    String       @default("UTC")
+  format      ReportFormat @default(PDF)
+  /// email | snapshot
+  delivery    String       @default("email")
+  recipients  String[]     @default([])
+  cc          String[]     @default([])
+  subject     String?
+  comment     String?
+  includeLink Boolean      @default(true)
+  /// Skip delivery when every data region is empty
+  onlyIfData  Boolean      @default(false)
+  parameters  Json         @default("{}")
+  /// Data-driven: { dataSourceId, query, emailColumn, ccColumn?, formatColumn?, paramColumns: { param: column } }
+  dataDriven  Json?
+  lastRunAt   DateTime?
+  lastStatus  String?
+  lastError   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  report      Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  deliveries  ReportDelivery[]
+
+  @@index([reportId])
+}
+
+model ReportDelivery {
+  id             String             @id @default(uuid())
+  subscriptionId String
+  startedAt      DateTime           @default(now())
+  finishedAt     DateTime?
+  /// running | success | partial | failed | skipped
+  status         String
+  delivered      Int                @default(0)
+  failed         Int                @default(0)
+  error          String?
+  details        Json?
+  subscription   ReportSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, startedAt])
+}
+
+model ReportSnapshot {
+  id             String   @id @default(uuid())
+  reportId       String
+  createdById    String?
+  subscriptionId String?
+  label          String?
+  parameters     Json
+  /// Fully rendered report (data included) so history views don't re-query
+  rendered       Json
+  rowCount       Int
+  sizeBytes      Int
+  createdAt      DateTime @default(now())
+  report         Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, createdAt])
+}
+
+/// SSRS-style execution log: one row per render (view, export, subscription, embed)
+model ReportExecution {
+  id          String   @id @default(uuid())
+  reportId    String
+  workspaceId String
+  userId      String?
+  /// viewer | export | subscription | snapshot | embed | url
+  source      String
+  format      String
+  parameters  Json
+  durationMs  Int
+  rowCount    Int
+  cached      Boolean  @default(false)
+  /// success | error
+  status      String
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([reportId, createdAt])
+}
