@@ -11,7 +11,7 @@ import { BadRequest, NotFound } from '../../lib/errors';
 import { audit } from '../audit/audit.service';
 import { dataSourcesService } from '../datasources/datasources.service';
 import { conditionSchema, evaluateOnce, evaluateRule } from './alert.evaluator';
-import { isAllowedTeamsWebhook, notifyChannel } from './notifiers';
+import { isAllowedSlackWebhook, isAllowedTeamsWebhook, isPublicHttpsUrlSyntax, notifyChannel } from './notifiers';
 
 const ruleSchema = z.object({
   name: z.string().min(1).max(200),
@@ -28,6 +28,16 @@ const ruleSchema = z.object({
 
 const channelSchema = z.discriminatedUnion('type', [
   z.object({ name: z.string().min(1).max(100), type: z.literal(ChannelType.EMAIL), recipients: z.array(z.string().email()).min(1).max(50) }),
+  z.object({
+    name: z.string().min(1).max(100),
+    type: z.literal(ChannelType.SLACK),
+    webhookUrl: z.string().url().refine(isAllowedSlackWebhook, 'Must be an https Slack incoming-webhook URL (hooks.slack.com)'),
+  }),
+  z.object({
+    name: z.string().min(1).max(100),
+    type: z.literal(ChannelType.WEBHOOK),
+    webhookUrl: z.string().url().refine(isPublicHttpsUrlSyntax, 'Must be a public https URL (private / internal hosts are blocked)'),
+  }),
   z.object({
     name: z.string().min(1).max(100),
     type: z.literal(ChannelType.TEAMS),

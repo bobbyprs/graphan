@@ -337,6 +337,8 @@ enum AlertState {
 enum ChannelType {
   EMAIL
   TEAMS
+  SLACK
+  WEBHOOK
 }
 
 model NotificationChannel {
@@ -344,7 +346,7 @@ model NotificationChannel {
   workspaceId String
   name        String
   type        ChannelType
-  /// EMAIL: { recipients: string[] }, TEAMS: { webhookUrl } (webhook encrypted)
+  /// EMAIL: { recipients: string[] }. TEAMS / SLACK / WEBHOOK: { webhookUrlEncrypted, webhookHost }
   config      Json
   createdAt   DateTime    @default(now())
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

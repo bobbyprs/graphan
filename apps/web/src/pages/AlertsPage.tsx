@@ -158,7 +158,7 @@ function RuleDialog({ initial, onClose }: { initial: RuleForm; onClose: () => vo
 
 function ChannelDialog({ onClose }: { onClose: () => void }) {
   const m = useAlertMutations();
-  const [type, setType] = useState<'EMAIL' | 'TEAMS'>('EMAIL');
+  const [type, setType] = useState<'EMAIL' | 'TEAMS' | 'SLACK' | 'WEBHOOK'>('EMAIL');
   const [name, setName] = useState('');
   const [recipients, setRecipients] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -168,14 +168,28 @@ function ChannelDialog({ onClose }: { onClose: () => void }) {
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <TextField select label="Type" value={type} onChange={(e) => setType(e.target.value as 'EMAIL')}>
+          <TextField select label="Type" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
             <MenuItem value="EMAIL">Email (SMTP)</MenuItem>
             <MenuItem value="TEAMS">Microsoft Teams (webhook / workflow)</MenuItem>
+            <MenuItem value="SLACK">Slack (incoming webhook)</MenuItem>
+            <MenuItem value="WEBHOOK">Webhook (generic JSON POST)</MenuItem>
           </TextField>
           {type === 'EMAIL' ? (
             <TextField label="Recipients (comma separated)" value={recipients} onChange={(e) => setRecipients(e.target.value)} />
           ) : (
-            <TextField label="Webhook URL" type="password" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} helperText="Stored encrypted. Must be an https Teams / Power Automate URL." />
+            <TextField
+              label="Webhook URL"
+              type="password"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              helperText={
+                type === 'TEAMS'
+                  ? 'Stored encrypted. Must be an https Teams / Power Automate URL.'
+                  : type === 'SLACK'
+                    ? 'Stored encrypted. Slack incoming-webhook URL (https://hooks.slack.com/…).'
+                    : 'Stored encrypted. Any public https endpoint; private/internal hosts are blocked.'
+              }
+            />
           )}
           {m.saveChannel.error && <Alert severity="error">{errorMessage(m.saveChannel.error)}</Alert>}
         </Stack>
@@ -247,7 +261,7 @@ export function AlertsPage() {
 
       {tab === 0 &&
         (rules.length === 0 ? (
-          <EmptyState icon={<NotificationsActiveIcon sx={{ fontSize: 48 }} />} title="No alert rules" description="Alert when a query result crosses a threshold; notify via email or Teams." />
+          <EmptyState icon={<NotificationsActiveIcon sx={{ fontSize: 48 }} />} title="No alert rules" description="Alert when a query result crosses a threshold; notify via email, Teams, Slack or webhook." />
         ) : (
           <Paper sx={{ overflowX: 'auto' }}>
             <Table size="small">

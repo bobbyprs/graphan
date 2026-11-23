@@ -413,7 +413,7 @@ export interface AlertRule {
   lastEvaluatedAt?: string | null;
   lastValue?: number | null;
   dataSource: { id: string; name: string; type: DataSourceType };
-  channels: { channel: { id: string; name: string; type: 'EMAIL' | 'TEAMS' } }[];
+  channels: { channel: { id: string; name: string; type: ChannelType } }[];
 }
 
 export interface AlertEvent {
@@ -428,10 +428,12 @@ export interface AlertEvent {
   ackUser?: { id: string; name: string } | null;
 }
 
+export type ChannelType = 'EMAIL' | 'TEAMS' | 'SLACK' | 'WEBHOOK';
+
 export interface NotificationChannel {
   id: string;
   name: string;
-  type: 'EMAIL' | 'TEAMS';
+  type: ChannelType;
   config: { recipients?: string[]; webhookHost?: string };
 }
 
