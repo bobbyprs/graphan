@@ -8,7 +8,7 @@ import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import DownloadIcon from '@mui/icons-material/Download';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { usePanelData } from '@/api/hooks';
+import { useAnnotations, usePanelData } from '@/api/hooks';
 import { errorMessage } from '@/api/client';
 import type { Panel, QueryResult } from '@/api/types';
 import { PanelRenderer } from '@/components/viz/PanelRenderer';
@@ -46,6 +46,8 @@ function toCsv(r: QueryResult) {
 function PanelFrameInner(p: Props) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const isText = p.panel.type === 'text';
+  const showsAnnotations = !p.publicToken && ['line', 'area', 'bar'].includes(p.panel.type);
+  const { data: annotations } = useAnnotations(p.dashboardId, showsAnnotations);
   const q = usePanelData({
     dashboardId: p.dashboardId,
     panelId: p.panel.id,
@@ -115,7 +117,7 @@ function PanelFrameInner(p: Props) {
             {errorMessage(q.error)}
           </Alert>
         ) : (
-          <PanelRenderer panel={p.panel} result={result} onDrill={p.onDrill && p.panel.drilldown ? (row) => p.onDrill!(p.panel, row) : undefined} />
+          <PanelRenderer panel={p.panel} result={result} annotations={annotations} onDrill={p.onDrill && p.panel.drilldown ? (row) => p.onDrill!(p.panel, row) : undefined} />
         )}
       </Box>
       <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} onClick={() => setAnchor(null)}>

@@ -22,6 +22,7 @@ import type {
   TrainResult,
   ForecastConfig,
   NotificationChannel,
+  Annotation,
   Paged,
   QueryHistoryItem,
   QueryResult,
@@ -297,6 +298,22 @@ export const useAlertEvents = (opts: { ruleId?: string; unacknowledged?: boolean
       (await api.get<Paged<AlertEvent>>('/alerts/events', { params: { ruleId: opts.ruleId, unacknowledged: opts.unacknowledged ? '1' : undefined, limit: 200 } })).data,
   });
 export const useChannels = () => useQuery({ queryKey: k('channels'), queryFn: async () => (await api.get<NotificationChannel[]>('/alerts/channels')).data });
+
+export const useAnnotations = (dashboardId?: string, enabled = true) =>
+  useQuery({
+    queryKey: k('annotations', dashboardId),
+    enabled: enabled && !!dashboardId,
+    queryFn: async () => (await api.get<Annotation[]>('/annotations', { params: { dashboardId } })).data,
+  });
+
+export function useAnnotationMutations(dashboardId?: string) {
+  const qc = useQueryClient();
+  const inv = () => qc.invalidateQueries({ queryKey: k('annotations', dashboardId) });
+  return {
+    create: useMutation({ mutationFn: (body: Record<string, unknown>) => api.post('/annotations', { dashboardId, ...body }), onSuccess: inv }),
+    remove: useMutation({ mutationFn: (id: string) => api.delete(`/annotations/${id}`), onSuccess: inv }),
+  };
+}
 
 export function useAlertMutations() {
   const qc = useQueryClient();

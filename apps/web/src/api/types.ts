@@ -437,6 +437,17 @@ export interface NotificationChannel {
   config: { recipients?: string[]; webhookHost?: string };
 }
 
+export interface Annotation {
+  id: string;
+  dashboardId: string | null;
+  time: string;
+  timeEnd?: string | null;
+  text: string;
+  tags: string[];
+  createdAt: string;
+  createdBy?: { id: string; name: string } | null;
+}
+
 export interface Member {
   id: string;
   role: Role;

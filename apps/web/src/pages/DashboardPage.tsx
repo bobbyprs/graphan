@@ -8,6 +8,8 @@ import AddchartIcon from '@mui/icons-material/Addchart';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CloseIcon from '@mui/icons-material/Close';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
+import { AnnotationsDialog } from '@/components/dashboard/AnnotationsDialog';
 import { useDashboard, useUpdateDashboard } from '@/api/hooks';
 import { EMBED_TOKEN, errorMessage, workspaceStore } from '@/api/client';
 import { useDashboardRoom, useSocketConnected, useSocketEvent } from '@/api/socket';
@@ -41,6 +43,7 @@ export function DashboardPage({ publicToken }: { publicToken?: string }) {
   const [editingPanel, setEditingPanel] = useState<Panel | null>(null);
   const [viewPanel, setViewPanel] = useState<Panel | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [annotationsOpen, setAnnotationsOpen] = useState(false);
   const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
   const [varOptions, setVarOptions] = useState<Record<string, string[]>>({});
 
@@ -222,6 +225,13 @@ export function DashboardPage({ publicToken }: { publicToken?: string }) {
               </Button>
             </>
           )}
+          {!editing && canEdit && !publicToken && (
+            <Tooltip title="Annotations">
+              <IconButton onClick={() => setAnnotationsOpen(true)} aria-label="Annotations">
+                <BookmarkBorderIcon />
+              </IconButton>
+            </Tooltip>
+          )}
           {!editing && canEdit && (
             <IconButton onClick={() => setSettingsOpen(true)} aria-label="Dashboard settings">
               <SettingsIcon />
@@ -323,6 +333,8 @@ export function DashboardPage({ publicToken }: { publicToken?: string }) {
           </Box>
         )}
       </Dialog>
+
+      {annotationsOpen && <AnnotationsDialog dashboardId={dashboard.id} onClose={() => setAnnotationsOpen(false)} />}
 
       {!publicToken && (
         <DashboardSettingsDialog

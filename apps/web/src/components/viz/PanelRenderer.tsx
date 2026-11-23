@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Box, Stack, Tooltip, Typography, useTheme } from '@mui/material';
 import Markdown from 'react-markdown';
-import type { Panel, QueryResult } from '@/api/types';
+import type { Annotation, Panel, QueryResult } from '@/api/types';
 import { formatValue, thresholdColor } from '@/utils/format';
 import { HOLOGRAPH_TYPES, supportsWebGL2 } from './holographSupport';
 import { buildCartesian, buildGauge, buildHeatmap, buildPie, buildScatter, buildTreemap, historyOnly, resolveFields } from './echartsOptions';
@@ -100,11 +100,12 @@ function KpiForecast({ panel, result, valueField }: { panel: Panel; result: Quer
 interface Props {
   panel: Panel;
   result: QueryResult;
+  annotations?: Annotation[];
   onDrill?: (row: Row) => void;
 }
 
 /** Renders a panel's data with the configured visualization. */
-export function PanelRenderer({ panel, result: full, onDrill }: Props) {
+export function PanelRenderer({ panel, result: full, annotations, onDrill }: Props) {
   const theme = useTheme();
   // Only time-series charts and tables render forecast rows; everything else sees real data
   const result = useMemo(() => (['line', 'area', 'bar', 'kpi', 'table'].includes(panel.type) ? full : historyOnly(full)), [panel.type, full]);
@@ -114,7 +115,7 @@ export function PanelRenderer({ panel, result: full, onDrill }: Props) {
       case 'line':
       case 'area':
       case 'bar':
-        return buildCartesian(panel, result, theme);
+        return buildCartesian(panel, result, theme, annotations);
       case 'pie':
         return buildPie(panel, result, theme);
       case 'scatter':
@@ -131,7 +132,7 @@ export function PanelRenderer({ panel, result: full, onDrill }: Props) {
       default:
         return null;
     }
-  }, [panel, result, theme]);
+  }, [panel, result, theme, annotations]);
 
   if (panel.type === 'text') {
     return (

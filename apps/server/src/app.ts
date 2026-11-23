@@ -19,6 +19,7 @@ import { dataSourcesRouter } from './modules/datasources/datasources.routes';
 import { explorerRouter } from './modules/explorer/explorer.routes';
 import { queriesRouter } from './modules/queries/queries.routes';
 import { dashboardsRouter } from './modules/dashboards/dashboards.routes';
+import { annotationsRouter } from './modules/dashboards/annotations.routes';
 import { publicRouter } from './modules/dashboards/public.routes';
 import { embedRouter } from './modules/dashboards/embed.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
@@ -80,6 +81,7 @@ export function createApp() {
   scoped.use('/queries', queriesRouter);
   scoped.use('/reports', reportsRouter);
   scoped.use('/dashboards', dashboardsRouter);
+  scoped.use('/annotations', annotationsRouter);
   scoped.use('/alerts', alertsRouter);
   scoped.use('/audit', auditRouter);
   scoped.use('/ml', mlRouter);

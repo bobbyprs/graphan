@@ -1,6 +1,6 @@
 import type { EChartsOption, SeriesOption } from 'echarts';
 import type { Theme } from '@mui/material';
-import type { Panel, QueryResult } from '@/api/types';
+import type { Annotation, Panel, QueryResult } from '@/api/types';
 import { SERIES_COLORS } from '@/theme/theme';
 import { formatValue, thresholdColor } from '@/utils/format';
 
@@ -96,7 +96,7 @@ function pivot(rows: Row[], x: string, seriesField: string, y: string) {
   return series;
 }
 
-export function buildCartesian(panel: Panel, result: QueryResult, theme: Theme): EChartsOption {
+export function buildCartesian(panel: Panel, result: QueryResult, theme: Theme, annotations: Annotation[] = []): EChartsOption {
   const o = panel.options;
   const { xField, yFields } = resolveFields(panel, result);
   if (!xField) return {};
@@ -149,6 +149,27 @@ export function buildCartesian(panel: Panel, result: QueryResult, theme: Theme):
 
   const catAxis = { type: isTime ? ('time' as const) : ('category' as const), ...axisStyle(theme), splitLine: { show: false } };
   const valAxis = { type: 'value' as const, ...axisStyle(theme), axisLabel: { ...axisStyle(theme).axisLabel, formatter: (v: number) => formatValue(v, o.unit, 0) } };
+
+  // Grafana-style annotations: dashed vertical markers (and shaded regions) on time axes.
+  if (isTime && annotations.length && series.length) {
+    const s0 = series[0] as SeriesOption & { markLine?: unknown; markArea?: unknown };
+    const points = annotations.filter((a) => !a.timeEnd).map((a) => ({ xAxis: new Date(a.time).getTime(), name: a.text }));
+    const regions = annotations
+      .filter((a) => a.timeEnd)
+      .map((a) => [{ xAxis: new Date(a.time).getTime(), name: a.text }, { xAxis: new Date(a.timeEnd as string).getTime() }]);
+    if (points.length) {
+      s0.markLine = {
+        symbol: ['none', 'none'],
+        silent: false,
+        lineStyle: { color: theme.palette.text.disabled, type: 'dashed', width: 1 },
+        label: { show: true, formatter: (pp: { name?: string }) => pp.name ?? '', color: theme.palette.text.secondary, fontSize: 10, position: 'insideEndTop' },
+        data: points,
+      };
+    }
+    if (regions.length) {
+      s0.markArea = { silent: true, itemStyle: { color: theme.palette.action.hover }, data: regions };
+    }
+  }
 
   const base = baseOption(theme, panel);
   return {

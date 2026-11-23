@@ -42,6 +42,7 @@ model User {
   mlModels      MlModel[]
   queryHistory  QueryHistory[]
   auditLogs     AuditLog[]
+  annotations   Annotation[]         @relation("AnnotationAuthor")
   alertAcks     AlertEvent[]         @relation("AlertAckBy")
 }
 
@@ -80,6 +81,7 @@ model Workspace {
   alertRules    AlertRule[]
   channels      NotificationChannel[]
   auditLogs     AuditLog[]
+  annotations   Annotation[]
   folders       Folder[]
 }
 
@@ -293,8 +295,29 @@ model Dashboard {
   owner           User      @relation("DashboardOwner", fields: [ownerId], references: [id])
   permissions     DashboardPermission[]
   versions        DashboardVersion[]
+  annotations     Annotation[]
 
   @@index([workspaceId])
+}
+
+/// Time-stamped events drawn as markers on time-series panels (Grafana-style).
+model Annotation {
+  id          String    @id @default(uuid())
+  workspaceId String
+  /// Null = workspace-global annotation (shown on every dashboard's time charts)
+  dashboardId String?
+  time        DateTime
+  /// Optional end for a region annotation (shaded band between time and timeEnd)
+  timeEnd     DateTime?
+  text        String
+  tags        String[]  @default([])
+  createdById String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dashboard   Dashboard? @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  createdBy   User?      @relation("AnnotationAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, dashboardId, time])
 }
 
 model DashboardVersion {
