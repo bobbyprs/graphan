@@ -318,6 +318,82 @@ export function PanelEditor({ open, panel: initial, variables, timeRange, variab
                       </>
                     )}
                   </Stack>
+                  <Divider />
+                  <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Typography variant="subtitle2">Pivot (long → wide)</Typography>
+                    <Switch
+                      size="small"
+                      checked={!!panel.transforms?.pivot}
+                      onChange={(e) =>
+                        setTx({
+                          pivot: e.target.checked
+                            ? { rowField: columns[0] ?? '', columnField: columns[1] ?? columns[0] ?? '', valueField: columns[2] ?? columns[1] ?? columns[0] ?? '', agg: 'sum' }
+                            : undefined,
+                        })
+                      }
+                    />
+                  </Stack>
+                  {panel.transforms?.pivot && (
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                      <Box sx={{ flex: 1 }}>
+                        <FieldSelect label="Row" columns={columns} value={panel.transforms.pivot.rowField} onChange={(f?: string) => f && setTx({ pivot: { ...panel.transforms!.pivot!, rowField: f } })} />
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <FieldSelect label="Columns from" columns={columns} value={panel.transforms.pivot.columnField} onChange={(f?: string) => f && setTx({ pivot: { ...panel.transforms!.pivot!, columnField: f } })} />
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <FieldSelect label="Values" columns={columns} value={panel.transforms.pivot.valueField} onChange={(f?: string) => f && setTx({ pivot: { ...panel.transforms!.pivot!, valueField: f } })} />
+                      </Box>
+                      <TextField select label="Function" value={panel.transforms.pivot.agg} onChange={(e) => setTx({ pivot: { ...panel.transforms!.pivot!, agg: e.target.value as 'sum' } })} sx={{ width: 120 }}>
+                        {['sum', 'avg', 'min', 'max', 'count', 'first', 'last'].map((f) => (
+                          <MenuItem key={f} value={f}>
+                            {f}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Stack>
+                  )}
+
+                  <Divider />
+                  <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Typography variant="subtitle2">Rename / hide columns</Typography>
+                    <Switch size="small" checked={!!panel.transforms?.rename} onChange={(e) => setTx({ rename: e.target.checked ? { map: {}, drop: [] } : undefined })} />
+                  </Stack>
+                  {panel.transforms?.rename && (
+                    <Stack spacing={0.5}>
+                      {columns.length === 0 && (
+                        <Typography variant="caption" color="text.secondary">
+                          Run the query first to list columns.
+                        </Typography>
+                      )}
+                      {columns.map((c) => {
+                        const rn = panel.transforms!.rename!;
+                        const dropped = (rn.drop ?? []).includes(c);
+                        return (
+                          <Stack key={c} direction="row" spacing={1} alignItems="center">
+                            <Typography variant="body2" noWrap sx={{ width: 150, color: dropped ? 'text.disabled' : 'text.secondary', textDecoration: dropped ? 'line-through' : undefined }}>
+                              {c}
+                            </Typography>
+                            <TextField
+                              size="small"
+                              placeholder={c}
+                              value={rn.map?.[c] ?? ''}
+                              disabled={dropped}
+                              onChange={(e) => setTx({ rename: { ...rn, map: { ...(rn.map ?? {}), [c]: e.target.value } } })}
+                              sx={{ flex: 1 }}
+                            />
+                            <Tooltip title={dropped ? 'Show column' : 'Hide column'}>
+                              <IconButton size="small" aria-label={dropped ? 'Show column' : 'Hide column'} onClick={() => setTx({ rename: { ...rn, drop: dropped ? (rn.drop ?? []).filter((x) => x !== c) : [...(rn.drop ?? []), c] } })}>
+                                {dropped ? <AddIcon fontSize="small" /> : <DeleteIcon fontSize="small" />}
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        );
+                      })}
+                    </Stack>
+                  )}
+
+                  <Divider />
                   <Stack direction="row" spacing={1}>
                     <Box sx={{ flex: 1 }}>
                       <FieldSelect

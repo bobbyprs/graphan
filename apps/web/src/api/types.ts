@@ -264,6 +264,8 @@ export interface Transforms {
   groupBy?: { fields: string[]; aggregations: { field: string; fn: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'distinct' | 'first' | 'last'; as?: string }[] };
   sort?: { field: string; dir: 'asc' | 'desc' }[];
   limit?: number;
+  pivot?: { rowField: string; columnField: string; valueField: string; agg: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'first' | 'last' };
+  rename?: { map?: Record<string, string>; drop?: string[]; order?: string[] };
   forecast?: ForecastConfig;
 }
 

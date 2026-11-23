@@ -75,6 +75,44 @@ test('transforms: filter → calc → group → sort', () => {
   ]);
 });
 
+test('transforms: pivot reshapes long → wide and aggregates', () => {
+  const r = applyTransforms(
+    {
+      columns: [{ name: 'month', type: 'string' }, { name: 'region', type: 'string' }, { name: 'sales', type: 'number' }],
+      rows: [
+        { month: 'Jan', region: 'East', sales: 10 },
+        { month: 'Jan', region: 'West', sales: 5 },
+        { month: 'Jan', region: 'East', sales: 2 },
+        { month: 'Feb', region: 'West', sales: 7 },
+      ],
+      rowCount: 4,
+      truncated: false,
+      durationMs: 1,
+    },
+    { pivot: { rowField: 'month', columnField: 'region', valueField: 'sales', agg: 'sum' } },
+  );
+  assert.deepEqual(r.columns.map((c) => c.name), ['month', 'East', 'West']);
+  assert.deepEqual(r.rows, [
+    { month: 'Jan', East: 12, West: 5 },
+    { month: 'Feb', East: null, West: 7 },
+  ]);
+});
+
+test('transforms: rename maps, drops and reorders columns', () => {
+  const r = applyTransforms(
+    {
+      columns: [{ name: 'a', type: 'number' }, { name: 'b', type: 'number' }, { name: 'c', type: 'number' }],
+      rows: [{ a: 1, b: 2, c: 3 }],
+      rowCount: 1,
+      truncated: false,
+      durationMs: 1,
+    },
+    { rename: { map: { a: 'Alpha' }, drop: ['b'], order: ['c', 'a'] } },
+  );
+  assert.deepEqual(r.columns.map((c) => c.name), ['c', 'Alpha']);
+  assert.deepEqual(r.rows, [{ c: 3, Alpha: 1 }]);
+});
+
 const fakePg = {
   dialect: 'postgres',
   placeholder: (i: number) => `$${i}`,
