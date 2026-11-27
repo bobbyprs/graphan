@@ -32,10 +32,10 @@ ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "cd ~/$DEPLOY_DIR && $REMOTE_CMD && docker i
 echo "==> Health check"
 HOST_IP="${DEPLOY_HOST#*@}"
 for i in $(seq 1 30); do
-  if curl -fsS -o /dev/null -m 3 "http://$HOST_IP:8080/"; then
-    echo "    OK  ->  http://$HOST_IP:8080"; exit 0
+  if curl -fsS -o /dev/null -m 3 "http://$HOST_IP:8070/"; then
+    echo "    OK  ->  http://$HOST_IP:8070"; exit 0
   fi
   sleep 2
 done
-echo "    web did not respond on :8080 - check: ssh $DEPLOY_HOST '~/$DEPLOY_DIR/bigga logs'" >&2
+echo "    web did not respond on :8060 - check: ssh $DEPLOY_HOST '~/$DEPLOY_DIR/bigga logs'" >&2
 exit 1

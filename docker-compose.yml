@@ -92,7 +92,7 @@ services:
       # Origins allowed to iframe /embed/* dashboards, space-separated
       EMBED_FRAME_ANCESTORS: ${EMBED_FRAME_ANCESTORS:-}
     ports:
-      - "8080:8080"
+      - "8070:8080"
     depends_on:
       - api
 
